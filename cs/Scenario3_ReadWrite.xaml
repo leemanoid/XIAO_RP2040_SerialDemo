@@ -9,6 +9,10 @@
 // PURPOSE, MERCHANTABILITY, OR NON-INFRINGEMENT.
 //
 //*********************************************************
+
+// Modified by Shartick Worker
+// https://shartick.work/
+
 -->
 <Page
     x:Class="CustomSerialDeviceAccess.Scenario3_ReadWrite"
@@ -33,8 +37,13 @@
             <ScrollViewer x:Name="ReadWriteScollViewer" Grid.Row="1" VerticalScrollMode="Auto" VerticalScrollBarVisibility="Auto" Margin="0,0,0,100">
                 <!-- Place scenario content here -->
                 <StackPanel Orientation="Vertical" Margin="10,0,0,0" Grid.Row="1">
+                    
+                    <TextBlock Text="Notifications" Margin="10,30,0,0" VerticalAlignment="Bottom" HorizontalAlignment="Left"/>
+                    <ListBox x:Name="NotificationList"  Height="192" Background="Gray"/>
+                    <Button x:Name="ObtainButton" Height="30" Content="SendNotification" Margin="10,10,0,0" Click="ObtainButton_Click" />
 
                     <StackPanel Orientation="Horizontal" Margin="10,0,0,0" Grid.Row="1">
+
                         <TextBlock Text="Write Timeout (ms) =" Margin="10,30,0,0" VerticalAlignment="Bottom" HorizontalAlignment="Right"/>
                         <TextBlock x:Name="WriteTimeoutValue" Text=" Not Set" Margin="10,10,0,0" VerticalAlignment="Bottom" HorizontalAlignment="Right"/>
                     </StackPanel>

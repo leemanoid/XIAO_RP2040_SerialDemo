@@ -9,6 +9,9 @@
 //
 //*********************************************************
 
+// Modified by Shartick Worker
+// https://shartick.work/
+
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -25,6 +28,12 @@ using Windows.Storage.Streams;
 
 using SDKTemplate;
 using CustomSerialDeviceAccess;
+using System.Collections.Generic;
+using Windows.UI.Notifications.Management;
+using Windows.Foundation.Metadata;
+using Windows.UI.Notifications;
+using System.Linq;
+using System.Text;
 
 // The Blank Page item template is documented at http://go.microsoft.com/fwlink/?LinkId=234238
 
@@ -60,6 +69,20 @@ namespace CustomSerialDeviceAccess
 
         // Indicate if we navigate away from this page or not.
         private Boolean IsNavigatedAway;
+
+        /// <summary>
+        /// 通知用タイマー
+        /// </summary>
+        private DispatcherTimer _timer;
+
+        /// <summary>
+        /// 通知用構造体
+        /// </summary>
+        private class NotifyText
+        {
+            public string Title { get; set; }
+            public string Body { get; set; }
+        }
 
         public Scenario3_ReadWrite()
         {
@@ -119,8 +142,151 @@ namespace CustomSerialDeviceAccess
                 UpdateWriteBytesCounterView();
                 UpdateWriteTimeoutView();
 
+                ObtainNotofications();
+
+                //自動で通知する場合はDispatchTimerを使う
+
+                ////通知タイマーを設定
+                //this._timer = new DispatcherTimer();
+
+                ////とりあえず10秒に1回取得する
+                //this._timer.Interval = TimeSpan.FromSeconds(10);
+
+                ////イベントを指定
+                //this._timer.Tick += _timer_Tick;
+
+                ////タイマーイベントを開始する
+                //this._timer.Start();
             }
         }
+
+        /// <summary>
+        /// タイマーイベント用の関数
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void _timer_Tick(object sender, object e)
+        {
+            ObtainNotofications();
+        }
+
+        /// <summary>
+        /// 通知を取得してリストに追加＆シリアル送信
+        /// </summary>
+        private async void ObtainNotofications()
+        {
+            //リストを初期化
+            NotificationList.Items.Clear();
+
+            //通知を取得する
+            List<NotifyText> nTexts = await AsyncMain();
+
+            //通知が無ければ画面クリアコマンドを送信
+            if (nTexts == null || !nTexts.Any())
+            {
+                await Write("clear" + "\r");
+                return;
+            }
+            
+            //通知があればXIAO RP2040に送る
+            
+            string notifText = "notify ";
+
+            //通知の数（MAX4回）だけループ
+            int loopCnt = (nTexts.Count > 4) ? 4 : nTexts.Count;
+
+            for (int i = 0; i < loopCnt; i++)
+            {   //ListViewに追加
+                NotificationList.Items.Add($"[{nTexts[i].Title}] {nTexts[i].Body}");
+
+                //Arduinoに送るテキストを作成
+                string tmpText = $"{nTexts[i].Title}: {nTexts[i].Body}";
+                
+                //長すぎる場合は50文字で区切る
+                notifText += (tmpText.Length > 50) ? tmpText.Substring(0, 50) + ".." : tmpText;
+
+                //行を分けるデリミタはタブ文字とする
+                notifText += "\t";  
+            }
+
+            //最後にCRで終端
+            notifText += "\r";
+
+            //XIAO RP2040にシリアル送信
+            await Write(notifText);
+        }
+
+        /// <summary>
+        /// 通知センターから通知を取得してListで返す
+        /// 元ネタ：https://docs.microsoft.com/ja-jp/windows/apps/design/shell/tiles-and-notifications/notification-listener
+        /// </summary>
+        /// <returns></returns>
+        private static async Task<List<NotifyText>> AsyncMain()
+        {
+            // リスナー APIがサポートされていない
+            if (!ApiInformation.IsTypePresent("Windows.UI.Notifications.Management.UserNotificationListener"))
+            {
+                Debug.WriteLine("API_NOT_SUPPORTED");
+                return null;
+            }
+
+            // リスナーを取得
+            UserNotificationListener listener = UserNotificationListener.Current;
+
+            // 通知へのアクセス許可を求める (UIスレッドから呼び出すこと)
+            UserNotificationListenerAccessStatus accessStatus = await listener.RequestAccessAsync();
+
+            switch (accessStatus)
+            {
+                // 通知へのアクセスが許可された場合
+                case UserNotificationListenerAccessStatus.Allowed:
+                    break;
+
+                // 通知へのアクセスが拒否された場合
+                case UserNotificationListenerAccessStatus.Denied:
+                    Debug.WriteLine("API_ACCESS_DENIED");
+                    return null;
+
+                // 通知へのアクセスが許可も拒否もされなかった場合
+                case UserNotificationListenerAccessStatus.Unspecified:
+                    Debug.WriteLine("API_ACCESS_UNSPECIFIED");
+                    return null;
+            }
+
+            var notifs = await listener.GetNotificationsAsync(NotificationKinds.Toast);
+
+            //取得した通知を題名＆本文の構造体Listに詰め替える
+#if false
+            /* LINQで無理やり書く */
+            //var aaa = notifs.Select(x => 
+            //    new NotifyText { Title = x.Notification.Visual.GetBinding(KnownNotificationBindings.ToastGeneric).GetTextElements().FirstOrDefault()?.Text,
+            //                     Body = string.Join("\n", x.Notification.Visual.GetBinding(KnownNotificationBindings.ToastGeneric).GetTextElements().Skip(1).Select(t => t.Text))
+            //    } );
+            //return aaa.ToList();
+#else
+            /* foreachで書く */
+            var list = new List<NotifyText>();
+
+            foreach (var n in notifs)
+            {
+                var toastBinding = n.Notification.Visual.GetBinding(KnownNotificationBindings.ToastGeneric);
+                if (toastBinding != null)
+                {
+                    var textElements = toastBinding.GetTextElements();
+
+                    var text = new NotifyText
+                    {
+                        Title = textElements.FirstOrDefault()?.Text,
+                        Body = string.Join("\n", textElements.Skip(1).Select(t => t.Text))
+                    };
+                    list.Add(text);
+                }
+            }
+
+            return list;
+#endif
+        }
+
 
         /// <summary>
         /// Cancel any on going tasks when navigating away from the page so the device is in a consistent state throughout
@@ -210,6 +376,12 @@ namespace CustomSerialDeviceAccess
 
         private async void WriteButton_Click(object sender, RoutedEventArgs e)
         {
+            //別関数化した
+            await Write(WriteBytesInputValue.Text + "\r");
+        }
+
+        private async Task Write(string text)
+        {
             if (EventHandlerForDevice.Current.IsDeviceConnected)
             {
                 try
@@ -222,7 +394,7 @@ namespace CustomSerialDeviceAccess
                     DataWriteObject = new DataWriter(EventHandlerForDevice.Current.Device.OutputStream);
                     UpdateWriteButtonStates();
 
-                    await WriteAsync(WriteCancellationTokenSource.Token);
+                    await WriteAsync(text, WriteCancellationTokenSource.Token);
                 }
                 catch (OperationCanceledException /*exception*/)
                 {
@@ -291,7 +463,6 @@ namespace CustomSerialDeviceAccess
 
         private async Task ReadAsync(CancellationToken cancellationToken)
         {
-
             Task<UInt32> loadAsyncTask;
 
             uint ReadBufferLength = 1024;
@@ -310,7 +481,11 @@ namespace CustomSerialDeviceAccess
             UInt32 bytesRead = await loadAsyncTask;
             if (bytesRead > 0)
             {
-                ReadBytesTextBlock.Text += DataReaderObject.ReadString(bytesRead);
+                byte[] buffer = new byte[bytesRead];
+                DataReaderObject.ReadBytes(buffer);
+                //ReadBytesTextBlock.Text += BitConverter.ToString(buffer, 0, (int)bytesRead);
+                ReadBytesTextBlock.Text += UTF8Encoding.UTF8.GetString(buffer);
+                //ReadBytesTextBlock.Text += DataReaderObject.ReadString(bytesRead);
                 ReadBytesCounter += bytesRead;
                 UpdateReadBytesCounterView();
 
@@ -318,18 +493,22 @@ namespace CustomSerialDeviceAccess
             rootPage.NotifyUser("Read completed - " + bytesRead.ToString() + " bytes were read", NotifyType.StatusMessage);
         }
 
-        private async Task WriteAsync(CancellationToken cancellationToken)
+        private async Task WriteAsync(string text, CancellationToken cancellationToken)
         {
 
             Task<UInt32> storeAsyncTask;
 
-            if ((WriteBytesAvailable) && (WriteBytesInputValue.Text.Length != 0))
+            if (/*(WriteBytesAvailable) &&*/ (text.Length != 0))
             {
-                char[] buffer = new char[WriteBytesInputValue.Text.Length];
-                WriteBytesInputValue.Text.CopyTo(0, buffer, 0, WriteBytesInputValue.Text.Length);
+                //UTF-8に変換したbyteとして送る
+                byte[] sendbytes = UTF8Encoding.UTF8.GetBytes(text);
+                DataWriteObject.WriteBytes(sendbytes);
+
+                char[] buffer = new char[text.Length];
+                text.CopyTo(0, buffer, 0, text.Length);
                 String InputString = new string(buffer);
-                DataWriteObject.WriteString(InputString);
-                WriteBytesInputValue.Text = "";
+                //DataWriteObject.WriteString(InputString);
+                //WriteBytesInputValue.Text = "";
 
                 // Don't start any IO if we canceled the task
                 lock (WriteCancelLock)
@@ -541,6 +720,11 @@ namespace CustomSerialDeviceAccess
             {
                 WriteBytesInputValue.Text = "";
             }
+        }
+
+        private void ObtainButton_Click(object sender, RoutedEventArgs e)
+        {
+            ObtainNotofications();
         }
     }
 }
