@@ -32,6 +32,10 @@ You should have received a copy of the GNU Lesser General Public
 License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 ***********************************************************************************/
+
+// Modified by Shartick Worker
+// https://shartick.work/
+
 #ifndef SerialCommand_h
 #define SerialCommand_h
 
@@ -49,8 +53,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 // You don't have to use SoftwareSerial features if this is not defined, you can still only use 
 // the Hardware serial port, just that this way lets you get out of having to include 
 // the SoftwareSerial.h header. 
-//#define SERIALCOMMAND_HARDWAREONLY 1
-#undef SERIALCOMMAND_HARDWAREONLY
+#define SERIALCOMMAND_HARDWAREONLY 1
+//#undef SERIALCOMMAND_HARDWAREONLY //XIAO RP2040をArduinoとして使う場合SoftwareSerial未対応なのでコメントアウト
 
 #ifdef SERIALCOMMAND_HARDWAREONLY
 #warning "Warning: Building SerialCommand without SoftwareSerial Support"
@@ -63,12 +67,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 #include <string.h>
 
 
-#define SERIALCOMMANDBUFFER 16
-#define MAXSERIALCOMMANDS	10
+#define SERIALCOMMANDBUFFER 610	//通知する文字列を受け取るためにサイズ拡張（50文字×3バイト×4行+コマンド10バイト＝610）
+#define MAXSERIALCOMMANDS	10	//コマンド最大数
+#define MAXCOMMANDLENGTH 8		//コマンド最大文字数
 #define MAXDELIMETER 2
 
 #define SERIALCOMMANDDEBUG 1
-#undef SERIALCOMMANDDEBUG      // Comment this out to run the library in debug mode (verbose messages)
+//#undef SERIALCOMMANDDEBUG      // Comment this out to run the library in debug mode (verbose messages)
 
 class SerialCommand
 {
@@ -80,6 +85,7 @@ class SerialCommand
 
 		void clearBuffer();   // Sets the command buffer to all '\0' (nulls)
 		char *next();         // returns pointer to next token found in command buffer (for getting arguments to commands)
+		char *getLast();         // command以降の文字列をすべて取得(初回strtok_rした際の第3引数lastを返す)
 		void readSerial();    // Main entry point.  
 		void addCommand(const char *, void(*)());   // Add commands to processing dictionary
 		void addDefaultHandler(void (*function)());    // A handler to call when no valid command received. 
@@ -93,7 +99,7 @@ class SerialCommand
 		char *token;                        // Returned token from the command buffer as returned by strtok_r
 		char *last;                         // State variable used by strtok_r during processing
 		typedef struct _callback {
-			char command[SERIALCOMMANDBUFFER];
+			char command[MAXCOMMANDLENGTH];
 			void (*function)();
 		} SerialCommandCallback;            // Data structure to hold Command/Handler function key-value pairs
 		int numCommand;

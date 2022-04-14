@@ -21,6 +21,9 @@ License along with this library; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 ***********************************************************************************/
 
+// Modified by Shartick Worker
+// https://shartick.work/
+
 #if defined(ARDUINO) && ARDUINO >= 100
 #include "Arduino.h"
 #else
@@ -72,12 +75,18 @@ void SerialCommand::clearBuffer()
 }
 
 // Retrieve the next token ("word" or "argument") from the Command buffer.  
-// returns a NULL if no more tokens exist.   
+// returns a NULL if no more tokens exist.
 char *SerialCommand::next() 
 {
 	char *nextToken;
 	nextToken = strtok_r(NULL, delim, &last); 
 	return nextToken; 
+}
+
+// コマンド以降を取得
+char *SerialCommand::getLast() 
+{
+	return last; 
 }
 
 // This checks the Serial stream for characters, and assembles them into a buffer.  
@@ -124,7 +133,7 @@ void SerialCommand::readSerial()
 				Serial.println("]");
 				#endif
 				// Compare the found command against the list of known commands for a match
-				if (strncmp(token,CommandList[i].command,SERIALCOMMANDBUFFER) == 0) 
+				if (strncmp(token,CommandList[i].command,MAXCOMMANDLENGTH) == 0) 
 				{
 					#ifdef SERIALCOMMANDDEBUG
 					Serial.print("Matched Command: "); 
@@ -143,7 +152,9 @@ void SerialCommand::readSerial()
 			}
 
 		}
-		if (isprint(inChar))   // Only printable characters into the buffer
+		//isprintだと日本語が除外されてしまうため、改行コードとNULL終端だけ弾く
+		//if (isprint(inChar))   // Only printable characters into the buffer
+		if (inChar != '\r' && inChar != '\n' && inChar != '\0')
 		{
 			buffer[bufPos++]=inChar;   // Put character into buffer
 			buffer[bufPos]='\0';  // Null terminate
@@ -165,7 +176,7 @@ void SerialCommand::addCommand(const char *command, void (*function)())
 		Serial.println(command); 
 		#endif
 		
-		strncpy(CommandList[numCommand].command,command,SERIALCOMMANDBUFFER); 
+		strncpy(CommandList[numCommand].command,command,MAXCOMMANDLENGTH); 
 		CommandList[numCommand].function = function; 
 		numCommand++; 
 	} else {
